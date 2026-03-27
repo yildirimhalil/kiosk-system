@@ -61,6 +61,8 @@ CREATE TABLE "User" (
     "id" UUID NOT NULL,
     "branchId" UUID NOT NULL,
     "name" TEXT NOT NULL,
+    "loginName" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
     "role" "UserRole" NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -86,6 +88,15 @@ CREATE TABLE "Order" (
     "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "Order_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "BranchOrderCounter" (
+    "branchId" UUID NOT NULL,
+    "date" DATE NOT NULL,
+    "counter" INTEGER NOT NULL DEFAULT 0,
+
+    CONSTRAINT "BranchOrderCounter_pkey" PRIMARY KEY ("branchId","date")
 );
 
 -- CreateTable
@@ -210,6 +221,9 @@ CREATE UNIQUE INDEX "Table_branchId_number_key" ON "Table"("branchId", "number")
 CREATE INDEX "User_branchId_idx" ON "User"("branchId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_branchId_loginName_key" ON "User"("branchId", "loginName");
+
+-- CreateIndex
 CREATE INDEX "Order_branchId_createdAt_idx" ON "Order"("branchId", "createdAt");
 
 -- CreateIndex
@@ -261,6 +275,9 @@ ALTER TABLE "Order" ADD CONSTRAINT "Order_branchId_fkey" FOREIGN KEY ("branchId"
 ALTER TABLE "Order" ADD CONSTRAINT "Order_tableId_fkey" FOREIGN KEY ("tableId") REFERENCES "Table"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "BranchOrderCounter" ADD CONSTRAINT "BranchOrderCounter_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -280,3 +297,4 @@ ALTER TABLE "MenuCategory" ADD CONSTRAINT "MenuCategory_menuId_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "Product" ADD CONSTRAINT "Product_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "MenuCategory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
