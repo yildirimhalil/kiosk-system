@@ -1,118 +1,219 @@
+<div align="center">
+
 # Kiosk System
 
-Çok şubeli işletmeler için **sipariş, menü, mutfak ve ödeme** akışlarını destekleyen bir backend API. NestJS + Prisma + PostgreSQL kullanır.
+**Multi-branch restaurant & retail backend** — orders, menus, kitchen, and payments behind a single NestJS API with **JWT-scoped tenants**, **Prisma**, and **PostgreSQL**.
 
-## Stack
+[![Node.js](https://img.shields.io/badge/node.js-22-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![Prisma](https://img.shields.io/badge/Prisma-5-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker_Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)](LICENSE)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 
-- **Runtime:** Node.js 22
-- **API:** NestJS 11
-- **ORM:** Prisma 5
-- **Veritabanı:** PostgreSQL 16
-- **Konteyner:** Docker Compose (API + Postgres)
+</div>
 
-## Gereksinimler
+---
 
-- Node.js 22 ve npm
-- PostgreSQL (yerel geliştirme için) **veya** yalnızca Docker
+## Table of contents
 
-## Hızlı başlangıç (Docker)
+- [Why this project](#why-this-project)
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+  - [Docker (recommended)](#docker-recommended)
+  - [Local development](#local-development)
+- [Authentication](#authentication)
+- [API reference](#api-reference)
+- [Repository layout](#repository-layout)
+- [Design intent & scope](#design-intent--scope)
+- [Scripts](#scripts)
+- [License](#license)
 
-`docker-compose.yml` içindeki kullanıcı/şifre/veritabanı adları **yalnızca geliştirme** içindir; üretimde değiştirin.
+---
+
+## Why this project
+
+This codebase is built to read like **production-shaped backend work**: clear boundaries between branches (tenants), predictable HTTP semantics (`400` / `404` / `409`), and **transactional** payment handling with an optional **idempotency** hook — without pretending to integrate a real card network.
+
+| | |
+| :--- | :--- |
+| **Multi-tenant by design** | Users and payments are scoped to a `branchId` carried in the JWT. |
+| **Safety over demos** | Passwords hashed with bcrypt; duplicate logins rejected with **409**. |
+| **Payments you can reason about** | Amount checks, status gates, double-payment prevention, atomic Prisma transactions. |
+| **Ops-ready baseline** | Docker Compose for API + Postgres, Prisma migrations, GitHub Actions CI. |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    H[HTTP clients]
+  end
+
+  subgraph API["apps/api (NestJS)"]
+    G[JwtAuthGuard]
+    A[Auth]
+    U[Users]
+    P[Payments]
+    O[Orders / Menu / Kitchen]
+  end
+
+  subgraph Data
+    PR[(Prisma)]
+    DB[(PostgreSQL)]
+  end
+
+  H --> G
+  G --> A
+  G --> U
+  G --> P
+  G --> O
+  A --> PR
+  U --> PR
+  P --> PR
+  O --> PR
+  PR --> DB
+```
+
+---
+
+## Tech stack
+
+| Layer | Choice |
+|--------|--------|
+| Runtime | **Node.js 22** |
+| Framework | **NestJS 11** |
+| Data access | **Prisma 5** |
+| Database | **PostgreSQL 16** |
+| Packaging | **npm workspaces** monorepo |
+| Local / demo infra | **Docker Compose** (API + Postgres) |
+
+**Requirements:** Node.js 22 + npm, and either PostgreSQL locally **or** Docker only.
+
+---
+
+## Getting started
+
+### Docker (recommended)
+
+Credentials in `docker-compose.yml` are for **development** — change them before any real deployment.
 
 ```bash
 cp .env.example .env
-# Docker ile Postgres kullanıyorsanız .env içindeki DATABASE_URL'i docker-compose.yml ile uyumlu yapın.
+# If Postgres runs in Docker, set DATABASE_URL in .env to match docker-compose.yml.
 docker compose up --build
 ```
 
-API: `http://localhost:3000`  
-PostgreSQL: `localhost:5432` (kullanıcı `kiosk`, şifre `kiosk`, veritabanı `kiosk`)
+| Service | URL / port |
+|---------|------------|
+| API | `http://localhost:3000` |
+| PostgreSQL | `localhost:5432` — user `kiosk`, password `kiosk`, database `kiosk` |
 
-## Yerel geliştirme
+### Local development
 
-1. Bağımlılıklar (monorepo kökünden):
+1. **Install** (from the repository root):
 
    ```bash
    npm install
    ```
 
-2. Ortam değişkenleri:
+2. **Environment**
 
    ```bash
    cp .env.example .env
    ```
 
-   `DATABASE_URL` değerini kendi PostgreSQL örneğinize göre düzenleyin.
+   Point `DATABASE_URL` at your PostgreSQL instance.
 
-3. Veritabanı migrasyonları (şema tek **`init`** migrasyonunda; PostgreSQL ayağa kalkınca):
+3. **Migrations** — schema ships as a single **`init`** migration; apply after Postgres is up:
 
    ```bash
    npx prisma migrate deploy
    ```
 
-   Geliştirme için şema değişikliği üretmek istersen: `npx prisma migrate dev`.
+   During schema work: `npx prisma migrate dev`.
 
-4. API’yi çalıştırma:
+4. **Run the API**
 
    ```bash
    cd apps/api && npm run start:dev
    ```
 
-   `main.ts` kök dizindeki `.env` dosyasını okur; `apps/api` içinden çalıştırırken de `.env` kökte olmalıdır.
+   `main.ts` loads `.env` from the **repository root** — keep `.env` there even when starting from `apps/api`.
 
-## Kimlik doğrulama (JWT)
+---
 
-- Çoğu HTTP rotası **Bearer JWT** ister; `Authorization: Bearer <access_token>`.
-- **Açık rotalar:** `GET /` (health), `POST /auth/login`.
-- Giriş gövdesi: `branchCode` (şubenin `code` alanı), `loginName`, `password` (min. 6 karakter).
-- `User` kaydında `loginName` şube içinde benzersizdir; şifre `bcrypt` ile saklanır.
-- Migrasyon sonrası mevcut kullanıcılar için geçici şifre **`changeme`** atanır (prod'da mutlaka değiştirin).
+## Authentication
 
-## Kullanıcılar (`/users`, JWT gerekli)
+- Most routes expect **`Authorization: Bearer <access_token>`**.
+- **Public:** `GET /` (health), `POST /auth/login`.
+- **Login body:** `branchCode` (matches branch `code`), `loginName`, `password` (≥ 6 characters).
+- **`loginName`** is unique per branch; passwords stored with **bcrypt**.
+- After migration, existing users may get a temporary password **`changeme`** — **replace in production**.
 
-| Metot | Yol | Yetki | Açıklama |
-|-------|-----|--------|----------|
-| GET | `/users` | Aynı şube | Liste; `?branchId=` verilirse yalnızca token’daki şube ile aynı olmalı |
-| GET | `/users/:id` | Aynı şube | Detay |
-| POST | `/users` | **ADMIN** | Şube, token’daki `branchId`; gövde: `name`, `loginName`, `password`, `role`, `isActive?` — `loginName` çakışırsa **409** |
-| PUT | `/users/:id` | **ADMIN** | `name`, `role`, `isActive`, `password?` |
-| DELETE | `/users/:id` | **ADMIN** | Soft delete (`deletedAt`) |
+---
 
-## Ödeme (`POST /payments/:orderId/process`, JWT gerekli)
+## API reference
 
-Gerçek **PSP / kart ağ geçidi yok**; domain ve API için **iş kuralları** ve **tutarlılık** öne çıkarılmıştır (portföy / mid sinyali).
+### Users — `/users` (JWT required)
 
-| Kural | Açıklama |
-|--------|----------|
-| Şube izolasyonu | Sipariş yalnızca token’daki `branchId` ile eşleşir; aksi **404** |
-| Durum | Ödeme yalnızca sipariş **CREATED** iken; aksi **400** |
-| Tutar | `amount`, sipariş `totalAmount` ile **Decimal** birebir eşit olmalı; aksi **400** |
-| Çift ödeme | Başarılı ödeme varsa **409** |
-| Atomiklik | Ödeme kaydı + sipariş `PAID` + `paidAmount` tek **Prisma transaction** |
-| Idempotency (opsiyonel) | `idempotencyKey`; aynı `reference` ile başarılı ödeme varsa **aynı kayıt** döner |
-| Üretim | Webhook, imza, satır kilidi / SERIALIZABLE, harici PSP — bu repoda **kapsam dışı** |
+| Method | Path | Access | Description |
+|--------|------|--------|-------------|
+| `GET` | `/users` | Same branch | List; optional `?branchId=` must match the token branch |
+| `GET` | `/users/:id` | Same branch | Detail |
+| `POST` | `/users` | **ADMIN** | Create; body: `name`, `loginName`, `password`, `role`, `isActive?` — duplicate `loginName` → **409** |
+| `PUT` | `/users/:id` | **ADMIN** | Update `name`, `role`, `isActive`, `password?` |
+| `DELETE` | `/users/:id` | **ADMIN** | Soft delete (`deletedAt`) |
 
-**Gövde:** `provider`, `amount`, isteğe bağlı `idempotencyKey`.
+### Payments — `POST /payments/:orderId/process` (JWT required)
 
-## Repo yapısı
+There is **no** real PSP or card gateway here — the emphasis is **domain rules**, **consistency**, and **clear failure modes** (useful for portfolios and technical interviews).
 
-| Yol | Açıklama |
-|-----|----------|
-| `apps/api` | NestJS uygulaması |
-| `prisma` | Şema ve migrasyonlar |
+| Rule | Behavior |
+|------|----------|
+| Branch isolation | Order must match JWT `branchId`; else **404** |
+| Order status | Pay only when order is **CREATED**; else **400** |
+| Amount | `amount` must equal order `totalAmount` (Decimal); else **400** |
+| Double pay | Existing successful payment → **409** |
+| Atomicity | Payment insert + order `PAID` + `paidAmount` in one **transaction** |
+| Idempotency (optional) | `idempotencyKey` — same `reference` returns the **same** successful row |
+| Beyond this repo | Webhooks, PSP signatures, `SERIALIZABLE` tuning — **out of scope** |
 
-## Portföy notu (mid seviyesine yakın sinyaller)
+**Body:** `provider`, `amount`, optional `idempotencyKey`.
 
-Bu repoda özellikle şunlar bilinçli olarak vurgulanır: **çok kiracılı şema**, **JWT + şube sınırı**, **kullanıcı yönetimi + 409** (unique), **ödeme akışında iş kuralları + transaction + idempotency seçeneği**, **Docker + CI**. Gerçek ödeme sağlayıcısı ve üretim operasyonu **bilinçli olarak yok**; mülakatta “scope ve roadmap” olarak anlatılmalıdır.
+---
 
-## Komutlar (kök dizin)
+## Repository layout
 
-| Komut | Açıklama |
-|-------|----------|
-| `npm run lint` | ESLint (CI ile aynı; düzeltme yapmaz) |
-| `npm run build` | API derlemesi |
-| `npm run test` | Jest testleri |
+| Path | Role |
+|------|------|
+| `apps/api` | NestJS application |
+| `prisma` | Schema and SQL migrations |
 
-## Lisans
+---
 
-MIT — ayrıntılar için `LICENSE`.
+## Design intent & scope
+
+The goal is to demonstrate **mid-level backend signals**: multi-tenant data boundaries, JWT + branch scoping, user lifecycle with **409** on conflicts, payment flows with **transactions** and **optional idempotency**, plus **Docker** and **CI**. A live payment provider and full production operations are **intentionally** left as roadmap items — say so explicitly in interviews.
+
+---
+
+## Scripts
+
+Run from the **repository root**:
+
+| Command | Purpose |
+|---------|---------|
+| `npm run lint` | ESLint (matches CI; no auto-fix) |
+| `npm run build` | Compile the API |
+| `npm run test` | Jest |
+
+---
+
+## License
+
+[MIT](LICENSE).
