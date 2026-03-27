@@ -15,6 +15,16 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   api:
     build:
       context: .
@@ -23,11 +33,14 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: postgresql://kiosk:kiosk@db:5432/kiosk
+      REDIS_URL: redis://redis:6379
       PORT: "3000"
       JWT_SECRET: dev-docker-secret-change-in-production
       JWT_EXPIRES_IN: 7d
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
