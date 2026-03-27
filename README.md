@@ -44,11 +44,13 @@ PostgreSQL: `localhost:5432` (kullanıcı `kiosk`, şifre `kiosk`, veritabanı `
 
    `DATABASE_URL` değerini kendi PostgreSQL örneğinize göre düzenleyin.
 
-3. Veritabanı migrasyonları:
+3. Veritabanı migrasyonları (şema tek **`init`** migrasyonunda; PostgreSQL ayağa kalkınca):
 
    ```bash
-   npx prisma migrate dev
+   npx prisma migrate deploy
    ```
+
+   Geliştirme için şema değişikliği üretmek istersen: `npx prisma migrate dev`.
 
 4. API’yi çalıştırma:
 
@@ -58,12 +60,50 @@ PostgreSQL: `localhost:5432` (kullanıcı `kiosk`, şifre `kiosk`, veritabanı `
 
    `main.ts` kök dizindeki `.env` dosyasını okur; `apps/api` içinden çalıştırırken de `.env` kökte olmalıdır.
 
+## Kimlik doğrulama (JWT)
+
+- Çoğu HTTP rotası **Bearer JWT** ister; `Authorization: Bearer <access_token>`.
+- **Açık rotalar:** `GET /` (health), `POST /auth/login`.
+- Giriş gövdesi: `branchCode` (şubenin `code` alanı), `loginName`, `password` (min. 6 karakter).
+- `User` kaydında `loginName` şube içinde benzersizdir; şifre `bcrypt` ile saklanır.
+- Migrasyon sonrası mevcut kullanıcılar için geçici şifre **`changeme`** atanır (prod'da mutlaka değiştirin).
+
+## Kullanıcılar (`/users`, JWT gerekli)
+
+| Metot | Yol | Yetki | Açıklama |
+|-------|-----|--------|----------|
+| GET | `/users` | Aynı şube | Liste; `?branchId=` verilirse yalnızca token’daki şube ile aynı olmalı |
+| GET | `/users/:id` | Aynı şube | Detay |
+| POST | `/users` | **ADMIN** | Şube, token’daki `branchId`; gövde: `name`, `loginName`, `password`, `role`, `isActive?` — `loginName` çakışırsa **409** |
+| PUT | `/users/:id` | **ADMIN** | `name`, `role`, `isActive`, `password?` |
+| DELETE | `/users/:id` | **ADMIN** | Soft delete (`deletedAt`) |
+
+## Ödeme (`POST /payments/:orderId/process`, JWT gerekli)
+
+Gerçek **PSP / kart ağ geçidi yok**; domain ve API için **iş kuralları** ve **tutarlılık** öne çıkarılmıştır (portföy / mid sinyali).
+
+| Kural | Açıklama |
+|--------|----------|
+| Şube izolasyonu | Sipariş yalnızca token’daki `branchId` ile eşleşir; aksi **404** |
+| Durum | Ödeme yalnızca sipariş **CREATED** iken; aksi **400** |
+| Tutar | `amount`, sipariş `totalAmount` ile **Decimal** birebir eşit olmalı; aksi **400** |
+| Çift ödeme | Başarılı ödeme varsa **409** |
+| Atomiklik | Ödeme kaydı + sipariş `PAID` + `paidAmount` tek **Prisma transaction** |
+| Idempotency (opsiyonel) | `idempotencyKey`; aynı `reference` ile başarılı ödeme varsa **aynı kayıt** döner |
+| Üretim | Webhook, imza, satır kilidi / SERIALIZABLE, harici PSP — bu repoda **kapsam dışı** |
+
+**Gövde:** `provider`, `amount`, isteğe bağlı `idempotencyKey`.
+
 ## Repo yapısı
 
 | Yol | Açıklama |
 |-----|----------|
 | `apps/api` | NestJS uygulaması |
 | `prisma` | Şema ve migrasyonlar |
+
+## Portföy notu (mid seviyesine yakın sinyaller)
+
+Bu repoda özellikle şunlar bilinçli olarak vurgulanır: **çok kiracılı şema**, **JWT + şube sınırı**, **kullanıcı yönetimi + 409** (unique), **ödeme akışında iş kuralları + transaction + idempotency seçeneği**, **Docker + CI**. Gerçek ödeme sağlayıcısı ve üretim operasyonu **bilinçli olarak yok**; mülakatta “scope ve roadmap” olarak anlatılmalıdır.
 
 ## Komutlar (kök dizin)
 
