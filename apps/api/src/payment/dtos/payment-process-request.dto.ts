@@ -1,4 +1,11 @@
-import { IsEnum, IsNumber, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { PaymentProvider } from '@prisma/client';
 
 export class PaymentProcessRequestDto {
@@ -8,4 +15,9 @@ export class PaymentProcessRequestDto {
   @IsNumber()
   @Min(0)
   amount: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  idempotencyKey?: string;
 }
