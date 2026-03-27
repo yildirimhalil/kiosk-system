@@ -1,0 +1,326 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//////////////////////////
+// MULTI TENANT
+//////////////////////////
+
+model Merchant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  isActive  Boolean  @default(true)
+
+  branches  Branch[]
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////
+// BRANCH
+//////////////////////////
+
+model Branch {
+  id          String   @id @default(uuid()) @db.Uuid
+  merchantId  String   @db.Uuid
+  merchant    Merchant @relation(fields: [merchantId], references: [id])
+
+  name        String
+  code        String   @unique
+
+  orders      Order[]
+  menus       Menu[]
+  tables      Table[]
+  users       User[]
+  orderCounters BranchOrderCounter[]
+
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([merchantId])
+}
+
+//////////////////////////
+// TABLE (QR için kritik)
+//////////////////////////
+
+model Table {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  branch    Branch  @relation(fields: [branchId], references: [id])
+
+  number    String
+  status    TableStatus @default(AVAILABLE)
+
+  orders    Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@unique([branchId, number])
+  @@index([branchId])
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+}
+
+//////////////////////////
+// USER (Cashier / Admin)
+//////////////////////////
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  branch    Branch  @relation(fields: [branchId], references: [id])
+
+  name      String
+  role      UserRole
+
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([branchId])
+}
+
+enum UserRole {
+  ADMIN
+  CASHIER
+}
+
+//////////////////////////
+// ORDER
+//////////////////////////
+
+model Order {
+  id           String       @id @default(uuid()) @db.Uuid
+
+  branchId     String       @db.Uuid
+  branch       Branch       @relation(fields: [branchId], references: [id])
+
+  tableId      String?      @db.Uuid
+  table        Table?       @relation(fields: [tableId], references: [id])
+
+  orderNumber  Int
+  source       OrderSource
+  status       OrderStatus
+
+  totalAmount  Decimal      @db.Decimal(10,2)
+  paidAmount   Decimal      @db.Decimal(10,2) @default(0)
+
+  items        OrderItem[]
+  payments     PaymentTransaction[]
+  kitchenTicket KitchenTicket?
+
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([branchId, orderNumber])
+  @@index([branchId, createdAt])
+  @@index([status])
+}
+
+/// Şube + gün bazlı sipariş numarası sayacı (günlük artan)
+model BranchOrderCounter {
+  branchId String   @db.Uuid
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  date     DateTime @db.Date
+  counter  Int      @default(0)
+
+  @@id([branchId, date])
+}
+
+enum OrderSource {
+  QR
+  KIOSK
+  CASHIER
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  SENT_TO_KITCHEN
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+//////////////////////////
+// ORDER ITEM + MODIFIER
+//////////////////////////
+
+model OrderItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @db.Uuid
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  productId String
+  name      String
+  unitPrice Decimal  @db.Decimal(10,2)
+  quantity  Int
+
+  modifiers OrderItemModifier[]
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model OrderItemModifier {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderItemId String   @db.Uuid
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+
+  name        String
+  price       Decimal  @db.Decimal(10,2)
+}
+
+//////////////////////////
+// PAYMENT
+//////////////////////////
+
+model PaymentTransaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @db.Uuid
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  provider  PaymentProvider
+  status    PaymentStatus
+  amount    Decimal  @db.Decimal(10,2)
+
+  reference String?
+  paidAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([status])
+}
+
+enum PaymentProvider {
+  CASH
+  CREDIT_CARD
+  ONLINE
+}
+
+enum PaymentStatus {
+  INITIATED
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+//////////////////////////
+// KITCHEN
+//////////////////////////
+
+model KitchenTicket {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @unique @db.Uuid
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  status    KitchenStatus
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+}
+
+enum KitchenStatus {
+  NEW
+  PREPARING
+  READY
+}
+
+//////////////////////////
+// MENU MANAGEMENT
+//////////////////////////
+
+model Menu {
+  id        String   @id @default(uuid()) @db.Uuid
+  branchId  String   @db.Uuid
+  branch    Branch   @relation(fields: [branchId], references: [id])
+
+  name      String
+  isActive  Boolean  @default(true)
+
+  categories MenuCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([branchId])
+}
+
+model MenuCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  menuId    String   @db.Uuid
+  menu      Menu     @relation(fields: [menuId], references: [id])
+
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+
+  products  Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([menuId])
+}
+
+model Product {
+  id          String       @id @default(uuid()) @db.Uuid
+  categoryId  String       @db.Uuid
+  category    MenuCategory @relation(fields: [categoryId], references: [id])
+
+  name        String
+  description String?
+  price       Decimal      @db.Decimal(10,2)
+  imageUrl    String?
+
+  sortOrder   Int          @default(0)
+  isActive    Boolean      @default(true)
+  isAvailable Boolean      @default(true)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  @@index([categoryId])
+  @@index([isActive, isAvailable])
+}
+
+//////////////////////////
+// AUDIT LOG
+//////////////////////////
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  entity    String
+  entityId  String
+  action    String
+  userId    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}
