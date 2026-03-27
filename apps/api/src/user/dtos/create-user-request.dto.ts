@@ -1,12 +1,16 @@
-import { IsString, IsEnum, IsOptional } from 'class-validator';
+import { IsString, IsEnum, IsOptional, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 
 export class CreateUserRequestDto {
   @IsString()
-  branchId: string;
+  name: string;
 
   @IsString()
-  name: string;
+  loginName: string;
+
+  @IsString()
+  @MinLength(6)
+  password: string;
 
   @IsEnum(UserRole)
   role: UserRole;

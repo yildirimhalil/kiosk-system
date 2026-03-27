@@ -11,6 +11,9 @@ export class UserResponseDto {
   @IsString()
   name: string;
 
+  @IsString()
+  loginName: string;
+
   @IsEnum(UserRole)
   role: UserRole;
 
